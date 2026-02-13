@@ -1,137 +1,137 @@
-# ✈️ Aviation DWH — US Flight Analytics
+# ✈️ Aviation DWH — Аналитика авиаперевозок США
 
-> A data warehouse for analyzing flight cancellations and delays across US airports,  
-> built as part of a data engineering study project by a team of 4.
-
----
-
-## What is this?
-
-We took real US flight data and asked a simple question:  
-**why do flights get cancelled — and can we predict when it's likely to happen?**
-
-Turns out, weather is responsible for 67–79% of all cancellations.  
-This project builds the infrastructure to show that: a full 4-layer data warehouse,  
-8 Airflow pipelines, and a live dashboard in Yandex DataLens.
+> Хранилище данных для анализа отмен и задержек рейсов по аэропортам США.  
+> Командный учебный проект по дата-инжинирингу.
 
 ---
 
-## What's inside
+## О чём этот проект
+
+Мы взяли реальные данные о рейсах США и задали следующий вопрос:  
+**почему рейсы отменяют — и можно ли предсказать, когда это произойдёт?**
+
+Оказалось, что погода — причина 67–79% всех отмен.  
+Этот проект строит инфраструктуру, чтобы это доказать: 4-слойное хранилище данных,  
+8 пайплайнов в Airflow и живой дашборд в Yandex DataLens.
+
+---
+
+## Что внутри
 
 ```
 aviation-dwh/
 ├── sql/
-│   └── dm_layer_queries.sql     # all 4 analytical mart queries
+│   └── dm_layer_queries.sql     # все 4 SQL-запроса аналитических витрин
 └── docs/
-    ├── architecture.md          # full layer-by-layer technical breakdown
-    └── report.md                # analytical findings and dashboard walkthrough
+    ├── architecture.md          # архитектура по слоям, таблицы, ETL-пайплайны
+    └── report.md                # аналитические выводы и описание дашборда
 ```
 
 ---
 
-## The stack
+## Стек
 
-| Tool | What we used it for |
+| Инструмент | Зачем |
 |---|---|
-| **PostgreSQL** | Storage for all 4 DWH layers |
-| **Apache Airflow** | 8 DAGs orchestrating the full ETL pipeline |
-| **Yandex DataLens** | BI dashboard — 7 charts, live data |
-| **S3** | Source file storage for raw flight data |
-| **METAR archive** | Hourly weather observations per airport |
+| **PostgreSQL** | хранилище всех 4 слоёв DWH |
+| **Apache Airflow** | оркестрация 8 DAG-ов ETL-пайплайна |
+| **Yandex DataLens** | BI-дашборд — 7 чартов, живые данные |
+| **S3** | хранение исходных файлов рейсов |
+| **METAR-архив** | почасовые метеонаблюдения по аэропортам |
 
 ---
 
-## How the data flows
+## Как движутся данные
 
 ```
-[BTS flights]    [OurAirports]    [METAR weather]
-      │                │                 │
-      ▼                ▼                 ▼
-   ods.*          ods.airport        ods.weather
-      │                                  │
-      ▼──────────────────────────────────▼
-   stg.flights                    stg.weather
-   (clean, deduplicate,           (normalize, extract
-    cast timestamps)               ICAO codes)
-      │                                  │
-      ▼──────────────────────────────────▼
-   dds.success_flights            dds.weather  ← SCD2
-   dds.cancel_flights             dds.airport
+[BTS рейсы]      [OurAirports]     [METAR погода]
+      │                │                  │
+      ▼                ▼                  ▼
+  ods.flights      ods.airport        ods.weather
+      │                                   │
+      ▼───────────────────────────────────▼
+  stg.flights                      stg.weather
+  (очистка, дедупликация,          (нормализация,
+   приведение timestamp)            ICAO-коды)
+      │                                   │
+      ▼───────────────────────────────────▼
+  dds.success_flights               dds.weather ← SCD2
+  dds.cancel_flights                dds.airport
       │
       ▼
-   dm.success_flights        dm.dep_arr_report
-   dm.cancel_flights         dm.cancellation_report
+  dm.success_flights          dm.dep_arr_report
+  dm.cancel_flights           dm.cancellation_report
       │
       ▼
-   Yandex DataLens dashboard
+  Дашборд Yandex DataLens
 ```
 
 ---
 
-## Key findings
+## Ключевые выводы
 
-After wiring everything together and running the dashboard, here's what the data actually showed:
+После того как всё заработало, данные показали следующее:
 
-- **Weather causes 67–79% of all cancellations** across all 4 airports (code B)
-- **January is the worst month** — peak cancellations, especially at AVL
-- **Most delays are 5–7 minutes**, but the tail reaches 150 min for outliers
-- **Snow at BIS drops average temperature to −7°C** — strong predictor of cancellations
-- **Hub routes dominate** — AVL sends most flights to LGA, ORD, DFW
-
----
-
-## The pipeline in detail
-
-9 Airflow DAGs, all tagged `team11test`, running in sequence:
-
-**ODS layer** — load raw data from sources
-- `Azimova_flights_ods_11` — parses flight files from S3
-- `Azimova_k_airport_ods_11` — loads airport reference
-- `Azimova_weather_ods_11` — processes METAR archives by ICAO code
-
-**STG layer** — clean and normalize
-- `azimovak_flights_stg_11` — casts timestamps, deduplicates by `(flight, date, origin, dest)`
-- `azimova_weather_stg_11` — normalizes weather fields, removes duplicates
-
-**DDS layer** — build the warehouse
-- `azimova_airport_dds_11` — adds surrogate keys to airport dimension
-- `azimova_flights_dds_11` — splits flights into success/cancel fact tables
-- `azimova_weather_dds_11` — builds SCD2 history for weather changes
-
-**DM layer** — create analytical marts
-- `krasovskayas_dm_flights_full_etl` — single DAG that creates all 4 DM tables
+- **Погода — причина 67–79% отмен** по всем 4 аэропортам (код B)
+- **Январь — худший месяц**: пик отмен, особенно в аэропорту AVL
+- **Большинство задержек — 5–7 минут**, но хвост распределения достигает 150 минут
+- **Снег в BIS снижает среднюю температуру до −7°C** — сильный предиктор отмен
+- **Маршруты концентрируются на хабах** — AVL отправляет больше всего рейсов в LGA, ORD, DFW
 
 ---
 
-## The dashboard
+## Пайплайн подробнее
 
-7 charts in Yandex DataLens, all connected to DM and DDS layers:
+9 DAG-ов в Airflow, все с тегом `team11test`, запускаются последовательно:
 
-| # | Chart | What it answers |
+**Слой ODS** — загрузка сырых данных из источников
+- `Azimova_flights_ods_11` — парсинг файлов рейсов из S3
+- `Azimova_k_airport_ods_11` — загрузка справочника аэропортов
+- `Azimova_weather_ods_11` — обработка METAR-архивов по ICAO-кодам
+
+**Слой STG** — очистка и нормализация
+- `azimovak_flights_stg_11` — приведение timestamp, дедупликация по `(рейс, дата, вылет, прилёт)`
+- `azimova_weather_stg_11` — нормализация полей погоды, удаление дублей
+
+**Слой DDS** — построение хранилища
+- `azimova_airport_dds_11` — справочник аэропортов с surrogate key
+- `azimova_flights_dds_11` — разделение рейсов на выполненные и отменённые
+- `azimova_weather_dds_11` — история изменений погоды (SCD2)
+
+**Слой DM** — аналитические витрины
+- `krasovskayas_dm_flights_full_etl` — один DAG создаёт все 4 DM-таблицы
+
+---
+
+## Дашборд
+
+7 чартов в Yandex DataLens, подключены к слоям DM и DDS:
+
+| № | Чарт | На какой вопрос отвечает |
 |---|---|---|
-| 1 | Airport map | Where are the busiest airports? What's their cancellation rate? |
-| 2 | Flight distance by destination | Which airports serve long-haul routes? |
-| 3 | Cancellations by month | When should you worry about scheduling? |
-| 4 | Cancellation reasons by airport | What's the dominant risk at each airport? |
-| 5 | Route distribution (tree-map) | Which directions carry the most traffic? |
-| 6 | Delay histograms | How bad are delays at each airport, really? |
-| 7 | Temperature & snow table | What weather conditions precede cancellations? |
+| 1 | Карта аэропортов | Где самые загруженные аэропорты? Какой у них процент отмен? |
+| 2 | Дальность рейсов по направлениям | Из каких аэропортов летят дальние рейсы? |
+| 3 | Отмены по месяцам | В какие периоды выше риск? |
+| 4 | Причины отмен по аэропортам | Что доминирует в каждом аэропорту? |
+| 5 | Распределение рейсов (tree-map) | Какие направления самые загруженные? |
+| 6 | Гистограммы задержек | Насколько плохи задержки в каждом аэропорту? |
+| 7 | Температура и снег | Какая погода предшествует отменам? |
 
 ---
 
-## Data sources
+## Источники данных
 
-| Source | What it provides |
+| Источник | Что предоставляет |
 |---|---|
-| [BTS — Bureau of Transportation Statistics](https://www.transtats.bts.gov) | US flight records: times, delays, cancellation codes |
-| [OurAirports](https://ourairports.com) | Airport reference: IATA/ICAO codes, coordinates, city, region |
-| METAR archive | Hourly weather: temperature, pressure, wind speed, visibility, cloud cover |
+| [BTS — Bureau of Transportation Statistics](https://www.transtats.bts.gov) | Записи рейсов США: времена, задержки, коды отмен |
+| [OurAirports](https://ourairports.com) | Справочник аэропортов: IATA/ICAO-коды, координаты, город, регион |
+| METAR-архив | Почасовая погода: температура, давление, скорость ветра, видимость, облачность |
 
 ---
 
-## Airports in scope
+## Аэропорты в проекте
 
-| Code | City | State |
+| Код | Город | Штат |
 |---|---|---|
 | AVL | Asheville | North Carolina |
 | FAY | Fayetteville | North Carolina |
@@ -140,21 +140,12 @@ After wiring everything together and running the dashboard, here's what the data
 
 ---
 
-## Team
+## Команда
 
-This project was built by a team of 4 as part of a data engineering course (Group 11):
-
-- **Карина Азимова** — ETL pipelines (ODS → STG → DDS), Airflow DAGs
-- **Альбина Бахтиарова** — data modeling, DDS layer design
-- **Софья Красовская** — DM layer, SQL mart queries
-- **Диана Мкоян** — time series analysis, DataLens dashboard
+Проект выполнен командой из 4 человек в рамках курса ФКН ВШЭ по дата-инжинирингу (Группа 11).
 
 ---
 
-## Want to explore the SQL?
-
-All DM-layer queries are in [`sql/dm_layer_queries.sql`](sql/dm_layer_queries.sql) —  
-fully commented, with explanations of why each join and transformation works the way it does.
-
-For the full architecture breakdown: [`docs/architecture.md`](docs/architecture.md)  
-For analytical findings: [`docs/report.md`](docs/report.md)
+Все запросы DM-слоя — в [`sql/dm_layer_queries.sql`](sql/dm_layer_queries.sql).  
+Архитектура по слоям: [`docs/architecture.md`](docs/architecture.md)  
+Аналитические выводы: [`docs/report.md`](docs/report.md)
